@@ -8,10 +8,6 @@ import time
 from pqc_env import PQCEnv
 
 
-################################################
-# A2C Callback for Logging
-################################################
-
 class A2CCallback(BaseCallback):
     def __init__(self, log_file, verbose=0):
         super().__init__(verbose)
@@ -70,7 +66,7 @@ class A2CCallback(BaseCallback):
                            f"{self.step_count}\n")
                 
                 if self.verbose > 0:
-                    print(f"Episode {self.episode_count}: Reward={self.episode_reward:.4f}")
+                    print(f"Episode {self.episode_count}: Reward={self.episode_reward:.2f}")
                 
                 self.episode_reward = 0
                 self.episode_metrics = {}
@@ -79,12 +75,7 @@ class A2CCallback(BaseCallback):
         return True
 
 
-################################################
-# Evaluation Function (Fixed)
-################################################
-
-def evaluate_a2c(model, env, n_episodes=10):
-    """Evaluate A2C model with proper switch tracking"""
+def evaluate_a2c(model, env, n_episodes=20):
     eval_rewards = []
     eval_metrics = []
     
@@ -128,17 +119,12 @@ def evaluate_a2c(model, env, n_episodes=10):
         eval_metrics.append(episode_metrics)
         
         print(f"  Episode {episode+1:3d}/{n_episodes}: "
-              f"Reward={episode_reward:8.4f} | "
+              f"Reward={episode_reward:8.2f} | "
               f"Switches={switch_count:2d} | "
-              f"Switch Time={total_switch_time:6.2f}ms | "
-              f"JWT={final_jwt:5.1f}%")
+              f"Switch Time={total_switch_time:6.2f}ms")
     
     return eval_rewards, eval_metrics
 
-
-################################################
-# Main Training
-################################################
 
 def main():
     os.makedirs("results", exist_ok=True)
@@ -153,7 +139,7 @@ def main():
         learning_rate=3e-4,
         gamma=0.99,
         n_steps=64,
-        ent_coef=0.05,
+        ent_coef=0.01,
         policy_kwargs=dict(net_arch=[128, 128]),
         verbose=0,
         device="auto"
@@ -161,7 +147,10 @@ def main():
     
     print("\n" + "="*80)
     print("A2C TRAINING - 10,000 TIMESTEPS")
-    print("="*80 + "\n")
+    print("="*80)
+    print(f"\nLearning Rate: 3e-4 | Gamma: 0.99 | Entropy Coef: 0.01")
+    print(f"n_steps: 64")
+    print("\n" + "-"*80 + "\n")
     
     start_time = time.time()
     model.learn(total_timesteps=10000, callback=callback, progress_bar=True)
@@ -178,14 +167,13 @@ def main():
     final_rewards, final_metrics = evaluate_a2c(model, PQCEnv(), n_episodes=20)
     
     print("\n" + "="*80)
-    print("FINAL RESULTS - A2C (10,000 timesteps)")
+    print("FINAL RESULTS - A2C")
     print("="*80)
     print(f"\nOver 20 evaluation episodes:")
-    print(f"  Cumulative Reward: {np.mean(final_rewards):.4f} ± {np.std(final_rewards):.4f}")
-    print(f"  Avg Switch Time: {np.mean([m.get('switch_time', 0) for m in final_metrics]):.2f}ms")
+    print(f"  Mean Reward: {np.mean(final_rewards):.2f} ± {np.std(final_rewards):.2f}")
+    print(f"  Total Reward: {np.sum(final_rewards):.2f}")
     
-    print("\nA2C training completed!")
-    print("Results saved to: results/a2c_results.csv")
+    print("\n✅ A2C completed!")
 
 
 if __name__ == "__main__":

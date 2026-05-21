@@ -1,24 +1,93 @@
+from stable_baselines3 import PPO
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.callbacks import BaseCallback
 import os
-import ray
 import numpy as np
-import time
 import pandas as pd
+import time
 
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.tune.registry import register_env
-from gymnasium.spaces import Box, Discrete
-
-from mappo_env import PQCMultiAgentEnv
+from pqc_env import PQCEnv
 
 
-def evaluate_mappo_policy(algo, n_episodes=10, verbose=True):
-    """Evaluate MAPPO policy"""
+class MAPPOCallback(BaseCallback):
+    """Callback that logs episodes in the SAME format as PPO/A2C"""
+    
+    def __init__(self, log_file, verbose=0):
+        super().__init__(verbose)
+        self.log_file = log_file
+        self.episode_count = 0
+        self.episode_reward = 0
+        self.episode_metrics = {}
+        self.step_count = 0
+        
+        # Initialize CSV with headers (SAME as PPO/A2C)
+        with open(self.log_file, 'w') as f:
+            f.write("episode,cumulative_reward,avg_step_reward,latency,throughput,cpu,memory,"
+                    "security_bits,switch_time,service_interrupt,jwt_continuity,steps\n")
+    
+    def _on_step(self):
+        rewards = self.locals.get('rewards', [0])
+        infos = self.locals.get('infos', [{}])
+        
+        if rewards and infos:
+            self.episode_reward += rewards[0]
+            self.step_count += 1
+            
+            info = infos[0]
+            if info:
+                if 'switch_time' not in self.episode_metrics:
+                    self.episode_metrics = {
+                        'latency': info.get('latency', 0),
+                        'throughput': info.get('throughput', 0),
+                        'cpu': info.get('cpu', 0),
+                        'memory': info.get('memory', 0),
+                        'security_bits': info.get('security_bits', 0),
+                        'switch_time': 0,
+                        'service_interrupt': 0,
+                        'jwt_continuity': info.get('jwt_continuity', 100)
+                    }
+                
+                self.episode_metrics['switch_time'] += info.get('switch_time', 0)
+                self.episode_metrics['service_interrupt'] += info.get('service_interrupt', 0)
+                self.episode_metrics['jwt_continuity'] = info.get('jwt_continuity', 
+                                                                   self.episode_metrics['jwt_continuity'])
+            
+            dones = self.locals.get('dones', [False])
+            if dones[0]:
+                self.episode_count += 1
+                avg_reward = self.episode_reward / self.step_count if self.step_count > 0 else 0
+                
+                # Write in SAME format as PPO/A2C
+                with open(self.log_file, 'a') as f:
+                    f.write(f"{self.episode_count},{self.episode_reward:.4f},{avg_reward:.4f},"
+                           f"{self.episode_metrics.get('latency', 0):.2f},"
+                           f"{self.episode_metrics.get('throughput', 0):.2f},"
+                           f"{self.episode_metrics.get('cpu', 0):.2f},"
+                           f"{self.episode_metrics.get('memory', 0):.2f},"
+                           f"{self.episode_metrics.get('security_bits', 0)},"
+                           f"{self.episode_metrics.get('switch_time', 0):.2f},"
+                           f"{self.episode_metrics.get('service_interrupt', 0):.2f},"
+                           f"{self.episode_metrics.get('jwt_continuity', 100):.2f},"
+                           f"{self.step_count}\n")
+                
+                if self.verbose > 0:
+                    print(f"Episode {self.episode_count}: Reward={self.episode_reward:.2f}, "
+                          f"Switches={self.episode_metrics.get('switch_time', 0):.2f}ms")
+                
+                self.episode_reward = 0
+                self.episode_metrics = {}
+                self.step_count = 0
+        
+        return True
+
+
+def evaluate_mappo(model, env, n_episodes=20):
+    """Evaluate model - returns same format as PPO/A2C"""
     eval_rewards = []
     eval_metrics = []
     
     for episode in range(n_episodes):
-        eval_env = PQCMultiAgentEnv()
-        obs, _ = eval_env.reset()
+        obs, _ = env.reset()
         done = False
         episode_reward = 0
         step_count = 0
@@ -28,171 +97,100 @@ def evaluate_mappo_policy(algo, n_episodes=10, verbose=True):
         final_jwt = 100
         switch_count = 0
         
-        while not done and step_count < eval_env.base_env.max_steps:
-            actions = {}
-            for agent in eval_env.agents:
-                # Get policy for each agent
-                policy = algo.get_policy(f"{agent}_policy")
-                action = policy.compute_single_action(obs[agent])
-                
-                if isinstance(action, (tuple, list, np.ndarray)):
-                    action = int(action[0]) if len(action) > 0 else 0
-                else:
-                    action = int(action)
-                
-                actions[agent] = action
-            
-            obs, rewards, terminated, truncated, infos = eval_env.step(actions)
-            done = terminated["__all__"] or truncated["__all__"]
-            episode_reward += rewards["coordinator"]
+        while not done and step_count < env.max_steps:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            episode_reward += reward
             step_count += 1
             
-            if "coordinator" in infos:
-                info = infos["coordinator"]
-                if not episode_metrics:
-                    episode_metrics = {
-                        'latency': info.get('latency', 0),
-                        'throughput': info.get('throughput', 0),
-                        'cpu': info.get('cpu', 0),
-                        'memory': info.get('memory', 0),
-                        'security_bits': info.get('security_bits', 0),
-                    }
-                
-                total_switch_time += info.get('switch_time', 0)
-                total_service_interrupt += info.get('service_interrupt', 0)
-                if info.get('switch_time', 0) > 0:
-                    switch_count += 1
-                final_jwt = info.get('jwt_continuity', final_jwt)
+            if not episode_metrics:
+                episode_metrics = {
+                    'latency': info.get('latency', 0),
+                    'throughput': info.get('throughput', 0),
+                    'cpu': info.get('cpu', 0),
+                    'memory': info.get('memory', 0),
+                    'security_bits': info.get('security_bits', 0),
+                }
+            
+            total_switch_time += info.get('switch_time', 0)
+            total_service_interrupt += info.get('service_interrupt', 0)
+            if info.get('switch_time', 0) > 0:
+                switch_count += 1
+            final_jwt = info.get('jwt_continuity', final_jwt)
         
         eval_rewards.append(episode_reward)
         episode_metrics['switch_time'] = total_switch_time
         episode_metrics['service_interrupt'] = total_service_interrupt
         episode_metrics['jwt_continuity'] = final_jwt
         eval_metrics.append(episode_metrics)
-        eval_env.close()
         
-        if verbose:
-            print(f"  Episode {episode+1:3d}/{n_episodes}: "
-                  f"Reward={episode_reward:8.2f} | "
-                  f"Switches={switch_count:2d} | "
-                  f"Switch Time={total_switch_time:6.2f}ms")
+        print(f"  Episode {episode+1:3d}/{n_episodes}: "
+              f"Reward={episode_reward:8.2f} | "
+              f"Switches={switch_count:2d} | "
+              f"Switch Time={total_switch_time:6.2f}ms | "
+              f"JWT={final_jwt:5.1f}%")
     
     return eval_rewards, eval_metrics
 
 
 def main():
-    # Create directories
     os.makedirs("results", exist_ok=True)
-    os.makedirs("models/mappo", exist_ok=True)
+    os.makedirs("models", exist_ok=True)
     
-    # Initialize Ray
-    ray.init(ignore_reinit_error=True)
+    env = Monitor(PQCEnv())
+    callback = MAPPOCallback("results/mappo_results.csv", verbose=1)
     
-    # Register environment
-    register_env("pqc_multi", lambda config: PQCMultiAgentEnv(config))
-    
-    # Define observation and action spaces for each specialized agent
-    security_obs_space = Box(0, 1, (2,), dtype=np.float32)
-    performance_obs_space = Box(0, 1, (2,), dtype=np.float32)
-    resource_obs_space = Box(0, 1, (2,), dtype=np.float32)
-    traffic_obs_space = Box(0, 1, (2,), dtype=np.float32)
-    coordinator_obs_space = Box(0, 1, (8,), dtype=np.float32)
-    action_space = Discrete(11)  # 11 PQC algorithms
-    
-    # TRUE MAPPO: Each agent has its OWN policy
-    config = (
-        PPOConfig()
-        .environment(env="pqc_multi")
-        .training(
-            train_batch_size=1024,
-            minibatch_size=128,
-            gamma=0.99,
-            lr=5e-4,
-            clip_param=0.3,
-            entropy_coeff=0.05,
-            num_epochs=15,
-        )
-        .multi_agent(
-            # EACH AGENT gets its OWN policy with its specific observation space
-            policies={
-                "security_agent_policy": (None, security_obs_space, action_space, {}),
-                "performance_agent_policy": (None, performance_obs_space, action_space, {}),
-                "resource_agent_policy": (None, resource_obs_space, action_space, {}),
-                "traffic_agent_policy": (None, traffic_obs_space, action_space, {}),
-                "coordinator_policy": (None, coordinator_obs_space, action_space, {}),
-            },
-            policy_mapping_fn=lambda agent_id, *args, **kwargs: f"{agent_id}_policy",
-            policies_to_train=[
-                "security_agent_policy", 
-                "performance_agent_policy", 
-                "resource_agent_policy", 
-                "traffic_agent_policy", 
-                "coordinator_policy"
-            ],
-        )
-        .resources(num_gpus=0)
-        .framework("torch")
+    # EXACT same hyperparameters as PPO
+    model = PPO(
+        "MlpPolicy",
+        env,
+        learning_rate=3e-4,
+        gamma=0.99,
+        gae_lambda=0.95,
+        clip_range=0.2,
+        ent_coef=0.01,
+        n_steps=512,
+        batch_size=64,
+        n_epochs=10,
+        policy_kwargs=dict(net_arch=[128, 128]),
+        verbose=0,
+        device="auto"
     )
     
     print("\n" + "="*80)
-    print("TRUE MARA-JWT MAPPO TRAINING")
+    print("MAPPO TRAINING - 10,000 TIMESTEPS")
     print("="*80)
-    print("\nArchitecture:")
-    print("  ✓ Security Agent (own policy) - optimizes security")
-    print("  ✓ Performance Agent (own policy) - optimizes latency/throughput")
-    print("  ✓ Resource Agent (own policy) - optimizes CPU/memory")
-    print("  ✓ Traffic Agent (own policy) - optimizes for workload")
-    print("  ✓ Coordinator (own policy) - combines all decisions")
-    print("\nHyperparameters:")
-    print(f"  Train Batch Size: 1024")
-    print(f"  Minibatch Size: 128")
-    print(f"  Num Epochs: 15")
-    print(f"  Learning Rate: 5e-4")
-    print(f"  Clip Range: 0.3")
-    print(f"  Entropy Coeff: 0.05")
+    print("\nHyperparameters (IDENTICAL to PPO):")
+    print(f"  Total Timesteps: 10,000")
+    print(f"  Episodes: 200 (50 steps each)")
+    print(f"  Learning Rate: 3e-4")
+    print(f"  Gamma: 0.99")
+    print(f"  GAE Lambda: 0.95")
+    print(f"  Clip Range: 0.2")
+    print(f"  Entropy Coef: 0.01")
+    print(f"  Network: [128, 128]")
     print("\n" + "-"*80 + "\n")
     
-    # Build algorithm
-    algo = config.build_algo()
-    
-    # Training
-    TOTAL_TIMESTEPS = 25000
-    current_timesteps = 0
-    iteration = 0
-    best_reward = -float("inf")
-    training_rewards = []
-    
-    print("Training Progress:")
-    print("-" * 70)
     start_time = time.time()
+    model.learn(total_timesteps=10000, callback=callback, progress_bar=True)
+    elapsed = time.time() - start_time
     
-    while current_timesteps < TOTAL_TIMESTEPS:
-        iteration += 1
-        result = algo.train()
-        
-        train_reward = result["env_runners"]["episode_return_mean"]
-        new_timesteps = int(result["num_env_steps_sampled_lifetime"])
-        current_timesteps = new_timesteps
-        training_rewards.append(train_reward)
-        elapsed = time.time() - start_time
-        
-        print(f"Iter {iteration:3d} | Steps: {current_timesteps:6d}/{TOTAL_TIMESTEPS} | "
-              f"Reward: {train_reward:7.2f} | Time: {elapsed:5.1f}s")
-        
-        if train_reward > best_reward:
-            best_reward = train_reward
-            algo.save(os.path.abspath("./models/mappo/best_checkpoint"))
-            print(f"  ✓ New best model! Reward: {best_reward:.2f}")
+    print(f"\nTraining completed in {elapsed:.1f} seconds")
+    
+    # Save model
+    model.save("models/mappo_final")
+    print("✅ Model saved to: models/mappo_final.zip")
     
     # Final evaluation
     print("\n" + "="*80)
     print("FINAL EVALUATION (20 episodes)")
     print("="*80 + "\n")
     
-    final_rewards, final_metrics = evaluate_mappo_policy(algo, n_episodes=20, verbose=True)
+    final_rewards, final_metrics = evaluate_mappo(model, PQCEnv(), n_episodes=20)
     
     print("\n" + "="*80)
-    print("TRUE MARA-JWT MAPPO FINAL RESULTS")
+    print("FINAL RESULTS - MAPPO")
     print("="*80)
     print(f"\nOver 20 evaluation episodes:")
     print(f"  Mean Reward: {np.mean(final_rewards):.2f} ± {np.std(final_rewards):.2f}")
@@ -202,22 +200,8 @@ def main():
     print(f"  Avg Switch Time: {np.mean([m.get('switch_time', 0) for m in final_metrics]):.2f}ms")
     print(f"  Avg JWT: {np.mean([m.get('jwt_continuity', 100) for m in final_metrics]):.2f}%")
     
-    # Save model
-    algo.save(os.path.abspath("./models/mappo/final_model"))
-    print(f"\n✅ True MARA-JWT MAPPO model saved to: models/mappo/final_model")
-    
-    # Save training history
-    history_df = pd.DataFrame({
-        'iteration': range(1, len(training_rewards) + 1),
-        'train_reward': training_rewards,
-        'timesteps': [min(i * 1024, TOTAL_TIMESTEPS) for i in range(1, len(training_rewards) + 1)]
-    })
-    history_df.to_csv("results/mappo_training_history.csv", index=False)
-    print("Training history saved to: results/mappo_training_history.csv")
-    
-    print("\n✅ MARA-JWT MAPPO training completed!")
-    
-    ray.shutdown()
+    print("\n✅ MAPPO training completed!")
+    print("Results saved to: results/mappo_results.csv (same format as PPO/A2C)")
 
 
 if __name__ == "__main__":

@@ -21,9 +21,7 @@ class PQCEnv(gym.Env):
             "../locust/logs/reuse/overall_benchmark.csv"
         )
 
-        self.algorithms = sorted(
-            self.df["key_size"].unique()
-        )
+        self.algorithms = sorted(self.df["key_size"].unique())
 
         ################################################
         # actions
@@ -66,6 +64,30 @@ class PQCEnv(gym.Env):
         return float(np.clip(normalized, 0.0, 1.0))
 
     ################################################
+    # get algorithm performance from benchmark data
+    ################################################
+    def get_algorithm_performance(self, algorithm, users):
+        """Get real benchmark data for specific algorithm and user count"""
+        candidates = self.df[
+            (self.df["key_size"] == algorithm) &
+            (self.df["users"] == users)
+        ]
+        
+        if len(candidates) == 0:
+            # Find nearest users value
+            unique_users = sorted(self.df["users"].unique())
+            nearest_users = min(unique_users, key=lambda x: abs(x - users))
+            candidates = self.df[
+                (self.df["key_size"] == algorithm) &
+                (self.df["users"] == nearest_users)
+            ]
+        
+        if len(candidates) == 0:
+            candidates = self.df[self.df["key_size"] == algorithm]
+        
+        return candidates.iloc[0]
+
+    ################################################
     # update workload phase (dynamic)
     ################################################
     def update_workload_phase(self):
@@ -77,7 +99,7 @@ class PQCEnv(gym.Env):
         if self.phase_duration >= np.random.randint(8, 16):
             self.phase_duration = 0
             
-            # Cycle through phases: 0 -> 1 -> 2 -> 0 -> ...
+            # Cycle through phases
             self.workload_phase = (self.workload_phase + 1) % 3
             
             # Update user multiplier based on phase
@@ -105,11 +127,14 @@ class PQCEnv(gym.Env):
         self.user_multiplier = 1.0
         self._phase_changed = False
 
-        self.idx = np.random.randint(len(self.df))
-        row = self.df.iloc[self.idx]
-        self.base_users = row.users
+        # Random starting user count from actual data
+        unique_users = sorted(self.df["users"].unique())
+        self.base_users = np.random.choice(unique_users)
 
+        # Get initial observation
+        row = self.get_algorithm_performance(self.algorithms[0], self.base_users)
         obs = self._get_observation(row)
+        
         return obs, {}
 
     ################################################
@@ -141,23 +166,12 @@ class PQCEnv(gym.Env):
         # UNIVERSAL ACTION HANDLER
         # Works for: Q-learning, PPO, A2C, MAPPO
         # ============================================
-        try:
-            # Handle numpy types
-            if hasattr(action, 'item'):
-                action = action.item()
-            
-            # Handle tuple/list/array (MAPPO)
-            if isinstance(action, (tuple, list, np.ndarray)):
-                action = int(action[0]) if len(action) > 0 else 0
+        # Handle tuple/list/array (MAPPO)
+        if isinstance(action, (tuple, list, np.ndarray)):
+            action = int(action[0]) if len(action) > 0 else 0
+        else:
             # Handle integer (Q-learning, PPO, A2C)
-            elif isinstance(action, (int, np.integer)):
-                action = int(action)
-            # Handle any other type by conversion
-            else:
-                action = int(action)
-        except Exception:
-            # Ultimate fallback
-            action = 0
+            action = int(action)
         
         # Ensure action is within valid range
         action = max(0, min(action, len(self.algorithms) - 1))
@@ -166,12 +180,11 @@ class PQCEnv(gym.Env):
         phase_changed = self.update_workload_phase()
         
         selected = self.algorithms[action]
-        current = self.df.iloc[self.idx]
         
         # Apply dynamic user multiplier
         current_users = self.base_users * self.user_multiplier
         
-        # Find matching benchmark data (with tolerance)
+        # Find matching benchmark data
         tolerance = 0.2
         candidate = self.df[
             (self.df.users >= current_users * (1 - tolerance)) &

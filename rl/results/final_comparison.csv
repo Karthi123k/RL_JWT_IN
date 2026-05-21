@@ -1,0 +1,11 @@
+Metric,Q,PPO,A2C,MAPPO
+Cumulative Reward,1256.27,2909.01,1407.39,2955.03
+Runtime Adaptability (%),100.00,100.00,100.00,100.00
+JWT Continuity (%),100.00,96.03,93.71,96.40
+Switching Time (ms),0.00,671.17,868.03,632.82
+Service Interruption (ms),0.00,217.60,283.18,205.25
+Latency (ms),73.68,45.30,65.70,54.86
+Throughput (rps),247.24,430.65,227.43,397.28
+CPU (m),1262.58,802.42,1156.51,1112.09
+Memory (MiB),171.92,220.73,167.44,221.09
+Security Satisfaction (%),75.75,89.22,75.12,90.44
