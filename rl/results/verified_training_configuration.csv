@@ -1,0 +1,10 @@
+Parameter,Q-learning,A2C,PPO,MARA-JWT
+Total Timesteps,"10,000","10,000","10,000","10,000"
+Episodes,200,200,200,200
+Learning Rate,0.1,3e-4,3e-4,3e-4
+Discount Factor (γ),0.99,0.99,0.99,0.99
+GAE Lambda (λ),N/A,N/A,0.95,0.95
+Clip Range (ε),N/A (ε-greedy),N/A,0.2,0.2
+Entropy Coefficient,N/A,0.01,0.01,0.01
+Batch Size,1 (online),64,64,64
+Network Architecture,Tabular,"[128, 128] MLP","[128, 128] MLP","5× [128, 128] MLP"
