@@ -1,0 +1,12 @@
+Algorithm,Public Key (bytes),Private Key (bytes)
+falcon1024,1793,2305
+falcon512,897,1281
+mldsa44,1312,2560
+mldsa65,1952,4032
+mldsa87,2592,4896
+sphincs128f,32,64
+sphincs128s,32,64
+sphincs192f,48,96
+sphincs192s,48,96
+sphincs256f,64,128
+sphincs256s,64,128

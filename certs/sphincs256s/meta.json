@@ -1,0 +1,7 @@
+{
+    "type": "hash-based",
+    "variant": "small",
+    "standard": "FIPS 205",
+    "algorithm": "SPHINCS+-SHAKE-256s-simple",
+    "folder": "sphincs256s"
+}

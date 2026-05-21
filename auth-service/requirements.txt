@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+sqlalchemy
+pymysql
+passlib[bcrypt]
+pyjwt
+cryptography
+pqcrypto
+stable-baselines3
+gym
+numpy
+torch

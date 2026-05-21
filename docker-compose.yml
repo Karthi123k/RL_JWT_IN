@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    volumes:
+      - ./certs:/app/certs
+    ports:
+      - "8001:8000"
+    environment:
+      KEY_SIZE: ${KEY_SIZE:-mldsa44}
+      OQS_ALG: ${OQS_ALG:-ML-DSA-44}
+    restart: unless-stopped
+    networks:
+      - micro-net
+
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    volumes:
+      - ./certs:/app/certs
+    ports:
+      - "8002:8000"
+    environment:
+      KEY_SIZE: ${KEY_SIZE:-mldsa44}
+      OQS_ALG: ${OQS_ALG:-ML-DSA-44}
+      REPLAY_PROTECTION: ${REPLAY_PROTECTION:-OFF}
+    restart: unless-stopped
+    depends_on:
+      - auth-service
+    networks:
+      - micro-net
+
+  gateway:
+    image: nginx:latest
+    container_name: gateway
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - auth-service
+      - user-service
+    restart: unless-stopped
+    networks:
+      - micro-net
+
+networks:
+  micro-net:
+    driver: bridge

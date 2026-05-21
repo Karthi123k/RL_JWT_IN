@@ -1,0 +1,6 @@
+{
+    "type": "lattice",
+    "standard": "FIPS 206 (draft)",
+    "algorithm": "Falcon-1024",
+    "folder": "falcon1024"
+}

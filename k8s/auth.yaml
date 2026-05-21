@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: pqc-jwt
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: auth-service
+
+  template:
+    metadata:
+      labels:
+        app: auth-service
+
+    spec:
+      containers:
+      - name: auth-service
+        image: auth-service:1.0
+        imagePullPolicy: Never
+
+
+
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "2000m"
+            memory: "1Gi"
+
+        volumeMounts:
+        - name: cert-storage
+          mountPath: /app/certs
+
+      volumes:
+      - name: cert-storage
+        persistentVolumeClaim:
+          claimName: cert-pvc

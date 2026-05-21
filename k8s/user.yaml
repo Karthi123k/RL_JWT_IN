@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: pqc-jwt
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: user-service
+
+  template:
+    metadata:
+      labels:
+        app: user-service
+
+    spec:
+      containers:
+      - name: user-service
+        image: user-service:1.0
+        imagePullPolicy: Never
+
+        env:
+        - name: KEY_SIZE
+          value: "mldsa44"
+
+        - name: REPLAY_PROTECTION
+          value: "OFF"
+
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "2000m"
+            memory: "1Gi"
+
+        volumeMounts:
+        - mountPath: /app/certs
+          name: cert-storage
+
+      volumes:
+      - name: cert-storage
+        persistentVolumeClaim:
+          claimName: cert-pvc
