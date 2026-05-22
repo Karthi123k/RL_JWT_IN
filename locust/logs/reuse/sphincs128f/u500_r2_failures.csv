@@ -1,2 +1,0 @@
-Method,Name,Error,Occurrences
-POST,/protected,502 Server Error: Bad Gateway for url: http://localhost:8080/protected,2

@@ -1,40 +1,46 @@
-from locust import HttpUser, task, between, events
-import os, threading
+from locust import HttpUser, task, between
 
-MAX_REQUESTS = int(os.getenv("MAX_REQUESTS", 1000))
 
-counter_lock = threading.Lock()
-request_count = 0
+class JWTUser(HttpUser):
 
-class User(HttpUser):
-    wait_time = between(0.001, 0.01)
+    wait_time = between(1,2)
 
     @task
-    def full_flow(self):
-        global request_count
+    def fullflow(self):
 
-        with counter_lock:
-            if request_count >= MAX_REQUESTS:
-                return
-            request_count += 1
+        #################################
+        # LOGIN
+        #################################
 
-        res = self.client.post("/login")
-        if res.status_code != 200:
+        login = self.client.post(
+            "/login",
+            name="/login"
+        )
+
+        if login.status_code != 200:
             return
 
-        token = res.json().get("token")
-        if not token:
+        try:
+
+            data = login.json()
+
+            token = data["token"]
+
+        except:
             return
 
-        # 🔥 KEY LOGIC
-        if len(token) > 10000:  # SPHINCS
-            self.client.post("/protected", json={"token": token})
-        else:  # ML-DSA / Falcon
-            self.client.get(
-                "/protected",
-                headers={"Authorization": f"Bearer {token}"}
-            )
+        #################################
+        # VERIFY
+        #################################
 
-@events.test_stop.add_listener
-def on_test_stop(environment, **kwargs):
-    print("✅ Test finished cleanly")
+        self.client.post(
+
+            "/verify",
+
+            headers={
+                "Authorization":
+                f"Bearer {token}"
+            },
+
+            name="/verify"
+        )

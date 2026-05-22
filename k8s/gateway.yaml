@@ -21,6 +21,14 @@ spec:
             port:
               number: 8000
 
+      - path: /verify
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-service
+            port:
+              number: 8000
+
       - path: /metrics/crypto
         pathType: Prefix
         backend:
@@ -44,6 +52,3 @@ spec:
             name: user-service
             port:
               number: 8000
-
-
-              

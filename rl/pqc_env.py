@@ -17,9 +17,14 @@ class PQCEnv(gym.Env):
 
         super().__init__()
 
-        self.df = pd.read_csv(
-            "../locust/logs/reuse/overall_benchmark.csv"
-        )
+        import os
+        local_path = os.path.join(os.path.dirname(__file__), "overall_benchmark.csv")
+        if os.path.exists(local_path):
+            self.df = pd.read_csv(local_path)
+        else:
+            self.df = pd.read_csv(
+                "../locust/logs/reuse/overall_benchmark.csv"
+            )
 
         self.algorithms = sorted(self.df["key_size"].unique())
 

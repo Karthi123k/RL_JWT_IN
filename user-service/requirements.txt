@@ -3,3 +3,5 @@ uvicorn
 pyjwt
 cryptography
 pqcrypto
+requests
+prometheus-client

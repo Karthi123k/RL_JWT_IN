@@ -1,47 +1,82 @@
 apiVersion: apps/v1
 kind: Deployment
+
 metadata:
   name: user-service
   namespace: pqc-jwt
 
 spec:
-  replicas: 1
+  replicas: 2
 
   selector:
     matchLabels:
       app: user-service
 
   template:
+
     metadata:
       labels:
         app: user-service
 
     spec:
       containers:
+
       - name: user-service
-        image: user-service:1.0
+
+        image: user-service:4.0
         imagePullPolicy: Never
 
-        env:
-        - name: KEY_SIZE
-          value: "mldsa44"
+        ports:
+        - containerPort: 8000
 
-        - name: REPLAY_PROTECTION
-          value: "OFF"
+
 
         resources:
           requests:
-            cpu: "250m"
+            cpu: "200m"
             memory: "256Mi"
+
           limits:
-            cpu: "2000m"
+            cpu: "1000m"
             memory: "1Gi"
 
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 20
+          periodSeconds: 10
+
         volumeMounts:
-        - mountPath: /app/certs
-          name: cert-storage
+        - name: cert-storage
+          mountPath: /app/certs
 
       volumes:
       - name: cert-storage
         persistentVolumeClaim:
           claimName: cert-pvc
+
+---
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: user-service
+  namespace: pqc-jwt
+
+spec:
+  selector:
+    app: user-service
+
+  ports:
+  - port: 8000
+    targetPort: 8000
+
+  type: ClusterIP

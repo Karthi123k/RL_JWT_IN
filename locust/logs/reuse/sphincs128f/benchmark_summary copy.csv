@@ -1,2 +1,0 @@
-algorithm,key_size,nist_level,security_bits,users,sign_mean_ms,sign_std_ms,verify_mean_ms,verify_std_ms,token_size,signature_size,latency_mean_ms,latency_std_ms,throughput_mean_rps,throughput_std_rps,failures,cpu_mean_m,cpu_std_m,memory_mean_mi,memory_std_mi
-SPHINCS+-SHA2-128f-simple,sphincs128f,1,128,500,12.1636,8.6206,1.2368,0.7176,22978,17088,122.6985,91.2977,251.9945,145.4891,0.0000,1669.3000,966.7613,288.5517,181.1313

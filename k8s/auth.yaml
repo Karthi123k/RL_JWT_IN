@@ -1,10 +1,12 @@
 apiVersion: apps/v1
 kind: Deployment
+
 metadata:
   name: auth-service
   namespace: pqc-jwt
 
 spec:
+
   replicas: 1
 
   selector:
@@ -12,31 +14,80 @@ spec:
       app: auth-service
 
   template:
+
     metadata:
       labels:
         app: auth-service
 
     spec:
+
       containers:
+
       - name: auth-service
-        image: auth-service:1.0
+
+        image: auth-service:10.0
+
         imagePullPolicy: Never
 
+        ports:
 
+        - containerPort: 8000
 
+        env:
+
+        - name: RL_MODEL
+          value: "Q"
+
+        # ADD THIS ONLY
         resources:
+
           requests:
-            cpu: "250m"
-            memory: "256Mi"
+            cpu: "100m"
+            memory: "128Mi"
+
           limits:
-            cpu: "2000m"
-            memory: "1Gi"
+            cpu: "500m"
+            memory: "512Mi"
+
+        readinessProbe:
+
+          httpGet:
+            path: /health
+            port: 8000
+
+          initialDelaySeconds: 10
+
+        livenessProbe:
+
+          httpGet:
+            path: /health
+            port: 8000
+
+          initialDelaySeconds: 20
 
         volumeMounts:
-        - name: cert-storage
-          mountPath: /app/certs
+        - mountPath: /app/certs
+          name: cert-storage
 
       volumes:
       - name: cert-storage
         persistentVolumeClaim:
           claimName: cert-pvc
+
+---
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: auth-service
+  namespace: pqc-jwt
+
+spec:
+
+  selector:
+    app: auth-service
+
+  ports:
+
+  - port: 8000
+    targetPort: 8000

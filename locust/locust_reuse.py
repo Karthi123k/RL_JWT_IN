@@ -1,36 +1,55 @@
 from locust import HttpUser, task, between
-import os
+import json
 
-MAX_REQUESTS = int(os.getenv("MAX_REQUESTS", 100))
+class JWTUser(HttpUser):
 
-class User(HttpUser):
-    wait_time = between(0.001, 0.005)
-
-    def on_start(self):
-        res = self.client.post("/login")
-        if res.status_code == 200:
-            self.token = res.json().get("token")
-        else:
-            self.token = None
-
-        self.request_count = 0
+    wait_time = between(0.5,1)
 
     @task
-    def verify_only(self):
-        if not self.token:
-            return
+    def login(self):
 
-        if self.request_count >= MAX_REQUESTS:
-            self.stop(True)
-            return
+        with self.client.post(
+            "/login",
+            catch_response=True,
+            timeout=30
+        ) as response:
 
-        # 🔥 KEY LOGIC
-        if len(self.token) > 10000:
-            self.client.post("/protected", json={"token": self.token})
-        else:
-            self.client.get(
-                "/protected",
-                headers={"Authorization": f"Bearer {self.token}"}
-            )
+            try:
 
-        self.request_count += 1
+                if response.status_code != 200:
+
+                    response.failure(
+                        f"HTTP {response.status_code}"
+                    )
+                    return
+
+
+                data=response.json()
+
+
+                if "algorithm" not in data:
+
+                    response.failure(
+                        "algorithm missing"
+                    )
+                    return
+
+
+                if "reward" not in data:
+
+                    response.failure(
+                        "reward missing"
+                    )
+                    return
+
+
+                response.success()
+
+
+            except Exception as e:
+
+                response.failure(
+                    str(e)
+                )
+
+                

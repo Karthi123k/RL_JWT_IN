@@ -6,7 +6,10 @@ passlib[bcrypt]
 pyjwt
 cryptography
 pqcrypto
-stable-baselines3
-gym
 numpy
+stable-baselines3
 torch
+psutil
+pandas
+requests
+prometheus-client
